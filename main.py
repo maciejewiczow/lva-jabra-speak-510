@@ -17,7 +17,7 @@ from websockets import ClientConnection
 LVA_WS_URL = os.getenv("LVA_WS_URL", "ws://0.0.0.0:6055")
 
 JABRA_VENDOR = 0x0b0e
-# JABRA_PRODUCT = 0x0412
+JABRA_PRODUCT = 0x0420  # Jabra Speak 510
 
 starttime = time.time()
 
@@ -29,26 +29,25 @@ if vol_ctrl not in ["pipewire", "lva"]:
     print("invalid volume control")
     vol_ctrl = None
 
-print(hid.enumerate())
-
-
-# USAGE_PAGE = 11
+print(hid.enumerate(JABRA_VENDOR, JABRA_PRODUCT))
 
 
 class Telephony(IntFlag):
     hook_switch = 1 << 0
     line_busy_tone = 1 << 1
     speaker_phone = 1 << 2
-    mute = 1 << 3
-    flash = 1 << 4
-    redial = 1 << 5
-    speed_dial = 1 << 6
-    phone_key_bit_0 = 1 << 7
-    phone_key_bit_1 = 1 << 8
-    phone_key_bit_2 = 1 << 9
-    phone_key_bit_3 = 1 << 10
-    # no clue
-    button_7 = 1 << 11
+    line = 1 << 3
+    mute = 1 << 4
+    flash = 1 << 5
+    redial = 1 << 6
+    speed_dial = 1 << 7
+    # 4-bit keypad value, not independent flags
+    phone_key_bit_0 = 1 << 8
+    phone_key_bit_1 = 1 << 9
+    phone_key_bit_2 = 1 << 10
+    phone_key_bit_3 = 1 << 11
+    # Button page, usage 1
+    button_1 = 1 << 12
 
 
 class LEDs(IntFlag):
@@ -58,15 +57,16 @@ class LEDs(IntFlag):
     ring = 1 << 3
     hold = 1 << 4
     microphone = 1 << 5
-    # marked telephony and not LED, probably why it's a dupe of ring
-    ringer = 1 << 6
+    # LED page 0x2A (On-Line)
+    on_line = 1 << 6
+    # Telephony page 0x9E, not an LED page usage
+    ringer = 1 << 7
 
 
 class Volume(IntFlag):
     vol_down = 1 << 0
     vol_up = 1 << 1
-    # does this ever trigger? might be a host -> device only thing?
-    mute = 1 << 2
+    play_pause = 1 << 2
 
 
 class LEDState(IntFlag, Enum):
@@ -113,10 +113,9 @@ class LVACommand(str, Enum):
 
 
 class JabraSpeak:
-    loop: asyncio.Task
-
     def __init__(self, path):
         self.path = path
+        self.loop: asyncio.Task | None = None
         self.device = hid.device()
         self.device.open_path(self.path)
         # we can do thread fuckery to make this work
@@ -138,7 +137,8 @@ class JabraSpeak:
                         case 0x01:
                             return Volume(read_info[1])
                         case _:
-                            print(f"{round(time.time() - starttime, 1)}s: Packet {bytelist(read_info)} of unknown type")
+                            print(
+                                f"{round(time.time() - starttime, 1)}s: Packet {bytelist(read_info)} of unknown type")
 
                 await asyncio.sleep(0.1)
             except asyncio.CancelledError:
@@ -157,16 +157,18 @@ class JabraSpeak:
 
         while True:
             event = await self.read()
-            print(f"from jabra: {event.__class__.__name__} {event.name} 0b{int(event):b}")
+            print(
+                f"from jabra: {event.__class__.__name__} {event.name} 0b{int(event):b}")
             # print(f"last event: {last_jabra_write.name}")
             if isinstance(event, Telephony):
                 if (
                         # hangup while talking
-                        ((event & Telephony.flash) and last_jabra_write == LEDState.partial_flash)
+                        ((event & Telephony.flash)
+                         and last_jabra_write == LEDState.partial_flash)
                         # hangup while listening
                         or (event is None and last_jabra_write == LEDState.three_green)
-                        # hangup while flashing?? wtf is button 7????
-                        or (event & Telephony.button_7)
+                        # hangup while flashing (Button page, usage 1)
+                        or (event & Telephony.button_1)
                 ):
                     print("jabra to lva: hangup detected")
                     await write_to_lva(LVACommand.STOP_TIMER_RINGING)
@@ -209,13 +211,6 @@ class JabraSpeak:
                             await write_to_lva(LVACommand.VOLUME_DOWN)
                         case "pipewire":
                             await wpctl_vol("10%-")
-                elif event & Volume.mute:
-                    print("jabra to lva: consumer control mute toggle detected")
-                    if muted:
-                        await set_mute(False)
-                        print("unmute cooldown")
-                    else:
-                        await set_mute(True)
 
 
 # fixes a bug where it can get stuck on wakework detected
@@ -236,22 +231,24 @@ devices: dict[str, JabraSpeak] = {}
 def discover(tg: asyncio.TaskGroup):
     global devices, device_paths
     new_device_paths = {}
-    for device in hid.enumerate(JABRA_VENDOR):
+    for device in hid.enumerate(JABRA_VENDOR, JABRA_PRODUCT):
         # serial = device['serial_number']
         # print(f"Found {device['product_string']} serial number: {serial}")
         new_device_paths[device['path']] = device
 
     if len(new_device_paths) == 0:
         # print("NO JABRA ALERT WAAAAA")
-        print("no jabra speak found!")
+        print("no jabra speak 510 found!")
     for path, device in device_paths.items():
         if path not in new_device_paths:
-            print(f"Device removed: {device['product_string']} s/n {device['serial_number']} @ {path}")
+            print(
+                f"Device removed: {device['product_string']} s/n {device['serial_number']} @ {path}")
             devices[path].close()
             del devices[path]
     for path, device in new_device_paths.items():
         if path not in device_paths:
-            print(f"New device: {device['product_string']} s/n {device['serial_number']} @ {path} ")
+            print(
+                f"New device: {device['product_string']} s/n {device['serial_number']} @ {path} ")
             devices[path] = JabraSpeak(path)
             devices[path].loop = tg.create_task(devices[path].readloop())
     device_paths = new_device_paths
@@ -275,7 +272,8 @@ async def write_to_lva(command: LVACommand, data: dict = None):
     if lva_sock:
         global last_lva_write
         last_lva_write = command
-        message = json.dumps({"command": command} | ({"data": data} if data else {}))
+        message = json.dumps({"command": command} | (
+            {"data": data} if data else {}))
         print(f"to lva: {message}")
         await lva_sock.send(message)
     else:
@@ -367,7 +365,8 @@ async def wsloop():
                     try:
                         current_state = LVAEvent(json_data["event"])
                     except ValueError:
-                        print(f"current state is not a valid event: {json_data['event']}")
+                        print(
+                            f"current state is not a valid event: {json_data['event']}")
                     match current_state:
                         case LVAEvent.WAKE_WORD_DETECTED:
                             await write_to_jabra(LEDState.flashing)
@@ -454,7 +453,6 @@ async def mute_detect_bodge():
                     await set_mute(True)
                 if any(chunk) and muted and off_mute_cooldown():
                     await set_mute(False)
-
 
         except asyncio.CancelledError:
             raise

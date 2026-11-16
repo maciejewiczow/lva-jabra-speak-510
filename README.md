@@ -1,29 +1,4 @@
-# LVA + Jabra Speak 410
-
-https://github.com/user-attachments/assets/edbfcc84-8e09-4f04-b039-65113ec8f7ae
-
-## NOTE
-
-this is dependent on [the **WIP** LVA peripheral API](https://github.com/OHF-Voice/linux-voice-assistant/pull/266). Your
-LVA must be, in some way, based on [LVA pull #266](https://github.com/OHF-Voice/linux-voice-assistant/pull/266), if it
-has not yet merged into main (hasn't at time of writing).
-
-I
-provide [some pre-built images](https://github.com/machineonamission/linux-voice-assistant/pkgs/container/linux-voice-assistant/)
-of different WIP forks of LVA based on this:
-
-- [peripheral api (#266)](https://github.com/OHF-Voice/linux-voice-assistant/pull/266):
-  `ghcr.io/machineonamission/linux-voice-assistant:leds-and-buttons-events`
-- [peripheral api (#266)](https://github.com/OHF-Voice/linux-voice-assistant/pull/266) + [pipewire volume control (#272)](https://github.com/OHF-Voice/linux-voice-assistant/pull/272):
-  `ghcr.io/machineonamission/linux-voice-assistant:leds-and-pipewire`
-- [peripheral api (#266)](https://github.com/OHF-Voice/linux-voice-assistant/pull/266) +
-  [pipewire volume control (#272)](https://github.com/OHF-Voice/linux-voice-assistant/pull/272)
-  [listen during wakeword (#273)](https://github.com/OHF-Voice/linux-voice-assistant/pull/273):
-  `ghcr.io/machineonamission/linux-voice-assistant:led-pipewire-wakelisten`
-
-## setup
-
-i've provided [a demo quadlet file](jabra.container)
+# LVA + Jabra Speak 510
 
 ### peripheral api
 
