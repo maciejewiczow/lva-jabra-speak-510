@@ -129,8 +129,11 @@ class JabraSpeak:
     async def read(self):
         while True:
             try:
-                read_info = self.device.read(8)
+                # Report 0x02 is 32 bytes; a small buffer truncates it
+                read_info = self.device.read(64)
                 if read_info:
+                    print(
+                        f"{round(time.time() - starttime, 1)}s: raw packet {bytelist(read_info)}")
                     match read_info[0]:
                         case 0x03:
                             return Telephony(read_info[1] | read_info[2] << 8)
