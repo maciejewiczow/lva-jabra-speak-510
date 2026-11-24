@@ -16,7 +16,7 @@ from websockets import ClientConnection
 LVA_WS_URL = os.getenv("LVA_WS_URL", "ws://0.0.0.0:6055")
 
 JABRA_VENDOR = 0x0B0E
-JABRA_PRODUCT = None
+# JABRA_PRODUCT = 0x0420  # Jabra Speak 510
 
 starttime = time.time()
 
@@ -28,7 +28,7 @@ if vol_ctrl not in ["pipewire", "lva"]:
     print("invalid volume control")
     vol_ctrl = None
 
-print(hid.enumerate(JABRA_VENDOR, JABRA_PRODUCT))
+print(hid.enumerate(JABRA_VENDOR))
 
 
 class Telephony(IntFlag):
@@ -155,7 +155,8 @@ class JabraSpeak:
 
     async def write(self, button_state: LEDs):
         return await asyncio.to_thread(
-            self.device.write, [0x03, button_state & 0xFF, (button_state & 0xFF00) >> 8]
+            self.device.write, [0x03, button_state &
+                                0xFF, (button_state & 0xFF00) >> 8]
         )
 
     async def readloop(self):
@@ -243,7 +244,7 @@ devices: dict[str, JabraSpeak] = {}
 def discover(tg: asyncio.TaskGroup):
     global devices, device_paths
     new_device_paths = {}
-    for device in hid.enumerate(JABRA_VENDOR, JABRA_PRODUCT):
+    for device in hid.enumerate(JABRA_VENDOR):
         # serial = device['serial_number']
         # print(f"Found {device['product_string']} serial number: {serial}")
         new_device_paths[device["path"]] = device
@@ -286,7 +287,8 @@ async def write_to_lva(command: LVACommand, data: dict = None):
     if lva_sock:
         global last_lva_write
         last_lva_write = command
-        message = json.dumps({"command": command} | ({"data": data} if data else {}))
+        message = json.dumps({"command": command} | (
+            {"data": data} if data else {}))
         print(f"to lva: {message}")
         await lva_sock.send(message)
     else:
